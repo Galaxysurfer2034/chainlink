@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Masterminds/semver/v3"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -1574,6 +1573,7 @@ func NewOffChainAggregatorV2ConfigForCCIPPlugin[T ccipconfig.OffchainConfig](
 		ocrConfig.S,
 		ocrConfig.Oracles,
 		ocrConfig.ReportingPluginConfig,
+		nil,
 		ocrConfig.MaxDurationQuery,
 		ocrConfig.MaxDurationObservation,
 		ocrConfig.MaxDurationReport,

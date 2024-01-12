@@ -24,34 +24,10 @@ flowchart LR
   classDef outline stroke-dasharray:6,fill:none;
   class chains,products outline
 
-  chainlink/v2 --> chain-selectors
-  click chain-selectors href "https://github.com/smartcontractkit/chain-selectors"
-  chainlink/v2 --> chainlink-automation
-  click chainlink-automation href "https://github.com/smartcontractkit/chainlink-automation"
-  chainlink/v2 --> chainlink-ccip
-  click chainlink-ccip href "https://github.com/smartcontractkit/chainlink-ccip"
-  chainlink/v2 --> chainlink-common
-  click chainlink-common href "https://github.com/smartcontractkit/chainlink-common"
-  chainlink/v2 --> chainlink-cosmos
-  click chainlink-cosmos href "https://github.com/smartcontractkit/chainlink-cosmos"
-  chainlink/v2 --> chainlink-data-streams
-  click chainlink-data-streams href "https://github.com/smartcontractkit/chainlink-data-streams"
-  chainlink/v2 --> chainlink-feeds
-  click chainlink-feeds href "https://github.com/smartcontractkit/chainlink-feeds"
-  chainlink/v2 --> chainlink-solana
-  click chainlink-solana href "https://github.com/smartcontractkit/chainlink-solana"
-  chainlink/v2 --> chainlink-starknet/relayer
-  click chainlink-starknet/relayer href "https://github.com/smartcontractkit/chainlink-starknet"
-  chainlink/v2 --> libocr
-  click libocr href "https://github.com/smartcontractkit/libocr"
-  chainlink/v2 --> tdh2/go/ocr2/decryptionplugin
-  click tdh2/go/ocr2/decryptionplugin href "https://github.com/smartcontractkit/tdh2"
-  chainlink/v2 --> tdh2/go/tdh2
-  click tdh2/go/tdh2 href "https://github.com/smartcontractkit/tdh2"
-  chainlink/v2 --> wsrpc
-  click wsrpc href "https://github.com/smartcontractkit/wsrpc"
   chainlink-automation --> chainlink-common
+  click chainlink-common href "https://github.com/smartcontractkit/chainlink-common"
   chainlink-automation --> libocr
+  click libocr href "https://github.com/smartcontractkit/libocr"
   chainlink-ccip --> chainlink-common
   chainlink-ccip --> libocr
   chainlink-common --> libocr
@@ -65,6 +41,31 @@ flowchart LR
   chainlink-solana --> libocr
   chainlink-starknet/relayer --> chainlink-common
   chainlink-starknet/relayer --> libocr
+  chainlink-vrf --> libocr
+  chainlink/v2 --> chain-selectors
+  click chain-selectors href "https://github.com/smartcontractkit/chain-selectors"
+  chainlink/v2 --> chainlink-automation
+  click chainlink-automation href "https://github.com/smartcontractkit/chainlink-automation"
+  chainlink/v2 --> chainlink-ccip
+  click chainlink-ccip href "https://github.com/smartcontractkit/chainlink-ccip"
+  chainlink/v2 --> chainlink-common
+  chainlink/v2 --> chainlink-cosmos
+  click chainlink-cosmos href "https://github.com/smartcontractkit/chainlink-cosmos"
+  chainlink/v2 --> chainlink-data-streams
+  click chainlink-data-streams href "https://github.com/smartcontractkit/chainlink-data-streams"
+  chainlink/v2 --> chainlink-feeds
+  click chainlink-feeds href "https://github.com/smartcontractkit/chainlink-feeds"
+  chainlink/v2 --> chainlink-solana
+  click chainlink-solana href "https://github.com/smartcontractkit/chainlink-solana"
+  chainlink/v2 --> chainlink-starknet/relayer
+  click chainlink-starknet/relayer href "https://github.com/smartcontractkit/chainlink-starknet"
+  chainlink/v2 --> libocr
+  chainlink/v2 --> tdh2/go/ocr2/decryptionplugin
+  click tdh2/go/ocr2/decryptionplugin href "https://github.com/smartcontractkit/tdh2"
+  chainlink/v2 --> tdh2/go/tdh2
+  click tdh2/go/tdh2 href "https://github.com/smartcontractkit/tdh2"
+  chainlink/v2 --> wsrpc
+  click wsrpc href "https://github.com/smartcontractkit/wsrpc"
   tdh2/go/ocr2/decryptionplugin --> libocr
   tdh2/go/ocr2/decryptionplugin --> tdh2/go/tdh2
 ```

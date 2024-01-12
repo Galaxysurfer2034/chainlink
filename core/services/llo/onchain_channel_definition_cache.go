@@ -113,6 +113,9 @@ const pollInterval = 1 * time.Second
 func (c *channelDefinitionCache) poll() {
 	defer c.wg.Done()
 
+	ctx, cancel := services.StopChan(c.chStop).NewCtx()
+	defer cancel()
+
 	pollT := services.NewTicker(pollInterval)
 	defer pollT.Stop()
 
@@ -121,7 +124,7 @@ func (c *channelDefinitionCache) poll() {
 		case <-c.chStop:
 			return
 		case <-pollT.C:
-			if n, err := c.fetchFromChain(); err != nil {
+			if n, err := c.fetchFromChain(ctx); err != nil {
 				// TODO: retry with backoff?
 				// https://smartcontract-it.atlassian.net/browse/MERC-3653
 				c.lggr.Errorw("Failed to fetch channel definitions from chain", "err", err)
@@ -137,10 +140,7 @@ func (c *channelDefinitionCache) poll() {
 	}
 }
 
-func (c *channelDefinitionCache) fetchFromChain() (nLogs int, err error) {
-	// TODO: Pass context
-	ctx, cancel := services.StopChan(c.chStop).NewCtx()
-	defer cancel()
+func (c *channelDefinitionCache) fetchFromChain(ctx context.Context) (nLogs int, err error) {
 	// https://smartcontract-it.atlassian.net/browse/MERC-3653
 	latest, err := c.lp.LatestBlock(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -172,7 +172,7 @@ func (c *channelDefinitionCache) fetchFromChain() (nLogs int, err error) {
 
 	// Use context.Background() here because we want to try to save even if we
 	// are closing
-	if err = c.orm.StoreChannelDefinitions(context.Background(), c.addr, c.Definitions(), toBlock); err != nil {
+	if err = c.orm.StoreChannelDefinitions(ctx, c.addr, c.Definitions(), toBlock); err != nil {
 		return 0, err
 	}
 

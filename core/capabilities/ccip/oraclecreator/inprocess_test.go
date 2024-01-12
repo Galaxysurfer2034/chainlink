@@ -227,6 +227,7 @@ func ocrOffchainConfig(t *testing.T, ks keystore.Master) (oracles []confighelper
 		schedule,
 		oracles,
 		offchainConfig,
+		nil,
 		50*time.Millisecond, // maxDurationQuery
 		5*time.Second,       // maxDurationObservation
 		10*time.Second,      // maxDurationShouldAcceptAttestedReport

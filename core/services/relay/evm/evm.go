@@ -89,11 +89,11 @@ var _ commontypes.Relayer = &Relayer{} //nolint:staticcheck
 // [UnimplementedOffchainConfigDigester] satisfies the OCR OffchainConfigDigester interface
 type UnimplementedOffchainConfigDigester struct{}
 
-func (e UnimplementedOffchainConfigDigester) ConfigDigest(config ocrtypes.ContractConfig) (ocrtypes.ConfigDigest, error) {
+func (e UnimplementedOffchainConfigDigester) ConfigDigest(ctx context.Context, config ocrtypes.ContractConfig) (ocrtypes.ConfigDigest, error) {
 	return ocrtypes.ConfigDigest{}, fmt.Errorf("unimplemented for this relayer")
 }
 
-func (e UnimplementedOffchainConfigDigester) ConfigDigestPrefix() (ocrtypes.ConfigDigestPrefix, error) {
+func (e UnimplementedOffchainConfigDigester) ConfigDigestPrefix(ctx context.Context) (ocrtypes.ConfigDigestPrefix, error) {
 	return 0, fmt.Errorf("unimplemented for this relayer")
 }
 
@@ -123,7 +123,7 @@ func (u UnimplementedContractTransmitter) Transmit(context.Context, ocrtypes.Rep
 	return fmt.Errorf("unimplemented for this relayer")
 }
 
-func (u UnimplementedContractTransmitter) FromAccount() (ocrtypes.Account, error) {
+func (u UnimplementedContractTransmitter) FromAccount(ctx context.Context) (ocrtypes.Account, error) {
 	return "", fmt.Errorf("unimplemented for this relayer")
 }
 
@@ -181,7 +181,7 @@ func (c RelayerOpts) Validate() error {
 	return err
 }
 
-func NewRelayer(lggr logger.Logger, chain legacyevm.Chain, opts RelayerOpts) (*Relayer, error) {
+func NewRelayer(ctx context.Context, lggr logger.Logger, chain legacyevm.Chain, opts RelayerOpts) (*Relayer, error) {
 	err := opts.Validate()
 	if err != nil {
 		return nil, fmt.Errorf("cannot create evm relayer: %w", err)
@@ -206,7 +206,6 @@ func NewRelayer(lggr logger.Logger, chain legacyevm.Chain, opts RelayerOpts) (*R
 
 	// Initialize write target capability if configuration is defined
 	if chain.Config().EVM().Workflow().ForwarderAddress() != nil {
-		ctx := context.Background()
 		capability, err := NewWriteTarget(ctx, relayer, chain, lggr)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize write target: %w", err)
@@ -224,16 +223,12 @@ func (r *Relayer) Name() string {
 	return r.lggr.Name()
 }
 
-// Start does noop: no subservices started on relay start, but when the first job is started
-func (r *Relayer) Start(context.Context) error {
-	return nil
+func (r *Relayer) Start(ctx context.Context) error {
+	return r.chain.Start(ctx)
 }
 
 func (r *Relayer) Close() error {
-	if r.triggerCapability != nil {
-		return r.triggerCapability.Close()
-	}
-	return nil
+	return services.CloseAll(r.triggerCapability, r.chain)
 }
 
 // Ready does noop: always ready
@@ -242,18 +237,38 @@ func (r *Relayer) Ready() error {
 }
 
 func (r *Relayer) HealthReport() (report map[string]error) {
-	report = make(map[string]error)
+	report = map[string]error{r.Name(): r.Ready()}
 	maps.Copy(report, r.chain.HealthReport())
 	return
 }
 
-func (r *Relayer) NewOCR3CapabilityProvider(rargs commontypes.RelayArgs, pargs commontypes.PluginArgs) (commontypes.OCR3CapabilityProvider, error) {
-	pp, err := r.NewPluginProvider(rargs, pargs)
+func (r *Relayer) GetChainStatus(ctx context.Context) (commontypes.ChainStatus, error) {
+	return r.chain.GetChainStatus(ctx)
+}
+
+func (r *Relayer) ListNodeStatuses(ctx context.Context, pageSize int32, pageToken string) (stats []commontypes.NodeStatus, nextPageToken string, total int, err error) {
+	return r.chain.ListNodeStatuses(ctx, pageSize, pageToken)
+}
+
+func (r *Relayer) Transact(ctx context.Context, from, to string, amount *big.Int, balanceCheck bool) error {
+	return r.chain.Transact(ctx, from, to, amount, balanceCheck)
+}
+
+func (r *Relayer) ID() string {
+	return r.chain.ID().String()
+}
+
+func (r *Relayer) Chain() legacyevm.Chain {
+	return r.chain
+}
+
+func (r *Relayer) NewOCR3CapabilityProvider(ctx context.Context, rargs commontypes.RelayArgs, pargs commontypes.PluginArgs) (commontypes.OCR3CapabilityProvider, error) {
+	pp, err := r.NewPluginProvider(ctx, rargs, pargs)
 	if err != nil {
 		return nil, err
 	}
 
-	fromAccount, err := pp.ContractTransmitter().FromAccount()
+	fromAccount, err := pp.ContractTransmitter().FromAccount(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -264,10 +279,7 @@ func (r *Relayer) NewOCR3CapabilityProvider(rargs commontypes.RelayArgs, pargs c
 	}, nil
 }
 
-func (r *Relayer) NewPluginProvider(rargs commontypes.RelayArgs, pargs commontypes.PluginArgs) (commontypes.PluginProvider, error) {
-	// TODO https://smartcontract-it.atlassian.net/browse/BCF-2887
-	ctx := context.Background()
-
+func (r *Relayer) NewPluginProvider(ctx context.Context, rargs commontypes.RelayArgs, pargs commontypes.PluginArgs) (commontypes.PluginProvider, error) {
 	lggr := logger.Sugared(r.lggr).Named("PluginProvider").Named(rargs.ExternalJobID.String())
 
 	configWatcher, err := newStandardConfigProvider(ctx, r.lggr, r.chain, types.NewRelayOpts(rargs))
@@ -289,9 +301,7 @@ func (r *Relayer) NewPluginProvider(rargs commontypes.RelayArgs, pargs commontyp
 	), nil
 }
 
-func (r *Relayer) NewMercuryProvider(rargs commontypes.RelayArgs, pargs commontypes.PluginArgs) (commontypes.MercuryProvider, error) {
-	// TODO https://smartcontract-it.atlassian.net/browse/BCF-2887
-	ctx := context.Background()
+func (r *Relayer) NewMercuryProvider(ctx context.Context, rargs commontypes.RelayArgs, pargs commontypes.PluginArgs) (commontypes.MercuryProvider, error) {
 	lggr := logger.Sugared(r.lggr).Named("MercuryProvider").Named(rargs.ExternalJobID.String())
 	relayOpts := types.NewRelayOpts(rargs)
 	relayConfig, err := relayOpts.RelayConfig()
@@ -327,7 +337,7 @@ func (r *Relayer) NewMercuryProvider(rargs commontypes.RelayArgs, pargs commonty
 
 	clients := make(map[string]wsrpc.Client)
 	for _, server := range mercuryConfig.GetServers() {
-		client, err := r.mercuryPool.Checkout(context.Background(), privKey, server.PubKey, server.URL)
+		client, err := r.mercuryPool.Checkout(ctx, privKey, server.PubKey, server.URL)
 		if err != nil {
 			return nil, err
 		}
@@ -376,10 +386,7 @@ func (r *Relayer) NewMercuryProvider(rargs commontypes.RelayArgs, pargs commonty
 	return NewMercuryProvider(cp, r.chainReader, r.codec, NewMercuryChainReader(r.chain.HeadTracker()), transmitter, reportCodecV1, reportCodecV2, reportCodecV3, reportCodecV4, lggr), nil
 }
 
-func (r *Relayer) NewLLOProvider(rargs commontypes.RelayArgs, pargs commontypes.PluginArgs) (commontypes.LLOProvider, error) {
-	// TODO https://smartcontract-it.atlassian.net/browse/BCF-2887
-	ctx := context.Background()
-
+func (r *Relayer) NewLLOProvider(ctx context.Context, rargs commontypes.RelayArgs, pargs commontypes.PluginArgs) (commontypes.LLOProvider, error) {
 	relayOpts := types.NewRelayOpts(rargs)
 	var relayConfig types.RelayConfig
 	{
@@ -422,7 +429,7 @@ func (r *Relayer) NewLLOProvider(rargs commontypes.RelayArgs, pargs commontypes.
 		transmitter = bm.NewTransmitter(r.lggr, fmt.Sprintf("%x", privKey.PublicKey))
 	} else {
 		var client wsrpc.Client
-		client, err = r.mercuryPool.Checkout(context.Background(), privKey, lloCfg.ServerPubKey, lloCfg.ServerURL())
+		client, err = r.mercuryPool.Checkout(ctx, privKey, lloCfg.ServerPubKey, lloCfg.ServerURL())
 		if err != nil {
 			return nil, err
 		}
@@ -436,20 +443,14 @@ func (r *Relayer) NewLLOProvider(rargs commontypes.RelayArgs, pargs commontypes.
 	return NewLLOProvider(cp, transmitter, r.lggr, cdc), nil
 }
 
-func (r *Relayer) NewFunctionsProvider(rargs commontypes.RelayArgs, pargs commontypes.PluginArgs) (commontypes.FunctionsProvider, error) {
-	// TODO https://smartcontract-it.atlassian.net/browse/BCF-2887
-	ctx := context.Background()
-
+func (r *Relayer) NewFunctionsProvider(ctx context.Context, rargs commontypes.RelayArgs, pargs commontypes.PluginArgs) (commontypes.FunctionsProvider, error) {
 	lggr := r.lggr.Named("FunctionsProvider").Named(rargs.ExternalJobID.String())
 	// TODO(FUN-668): Not ready yet (doesn't implement FunctionsEvents() properly)
 	return NewFunctionsProvider(ctx, r.chain, rargs, pargs, lggr, r.ks.Eth(), functions.FunctionsPlugin)
 }
 
 // NewConfigProvider is called by bootstrap jobs
-func (r *Relayer) NewConfigProvider(args commontypes.RelayArgs) (configProvider commontypes.ConfigProvider, err error) {
-	// TODO https://smartcontract-it.atlassian.net/browse/BCF-2887
-	ctx := context.Background()
-
+func (r *Relayer) NewConfigProvider(ctx context.Context, args commontypes.RelayArgs) (configProvider commontypes.ConfigProvider, err error) {
 	lggr := r.lggr.Named("ConfigProvider").Named(args.ExternalJobID.String())
 	relayOpts := types.NewRelayOpts(args)
 	relayConfig, err := relayOpts.RelayConfig()
@@ -701,8 +702,7 @@ func (r *Relayer) NewChainWriter(_ context.Context, config []byte) (commontypes.
 	return NewChainWriterService(r.lggr, r.chain.Client(), r.chain.TxManager(), r.chain.GasEstimator(), cfg)
 }
 
-func (r *Relayer) NewContractReader(chainReaderConfig []byte) (commontypes.ContractReader, error) {
-	ctx := context.Background()
+func (r *Relayer) NewContractReader(ctx context.Context, chainReaderConfig []byte) (commontypes.ContractReader, error) {
 	cfg := &types.ChainReaderConfig{}
 	if err := json.Unmarshal(chainReaderConfig, cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshall chain reader config err: %s", err)
@@ -711,10 +711,7 @@ func (r *Relayer) NewContractReader(chainReaderConfig []byte) (commontypes.Contr
 	return NewChainReaderService(ctx, r.lggr, r.chain.LogPoller(), r.chain.HeadTracker(), r.chain.Client(), *cfg)
 }
 
-func (r *Relayer) NewMedianProvider(rargs commontypes.RelayArgs, pargs commontypes.PluginArgs) (commontypes.MedianProvider, error) {
-	// TODO https://smartcontract-it.atlassian.net/browse/BCF-2887
-	ctx := context.Background()
-
+func (r *Relayer) NewMedianProvider(ctx context.Context, rargs commontypes.RelayArgs, pargs commontypes.PluginArgs) (commontypes.MedianProvider, error) {
 	lggr := logger.Sugared(r.lggr).Named("MedianProvider").Named(rargs.ExternalJobID.String())
 	relayOpts := types.NewRelayOpts(rargs)
 	relayConfig, err := relayOpts.RelayConfig()
@@ -763,7 +760,7 @@ func (r *Relayer) NewMedianProvider(rargs commontypes.RelayArgs, pargs commontyp
 		}
 
 		boundContracts := []commontypes.BoundContract{{Name: "median", Address: contractID.String()}}
-		if err = chainReaderService.Bind(context.Background(), boundContracts); err != nil {
+		if err = chainReaderService.Bind(ctx, boundContracts); err != nil {
 			return nil, err
 		}
 	} else {
@@ -783,11 +780,11 @@ func (r *Relayer) NewMedianProvider(rargs commontypes.RelayArgs, pargs commontyp
 	return &medianProvider, nil
 }
 
-func (r *Relayer) NewAutomationProvider(rargs commontypes.RelayArgs, pargs commontypes.PluginArgs) (commontypes.AutomationProvider, error) {
+func (r *Relayer) NewAutomationProvider(ctx context.Context, rargs commontypes.RelayArgs, pargs commontypes.PluginArgs) (commontypes.AutomationProvider, error) {
 	lggr := logger.Sugared(r.lggr).Named("AutomationProvider").Named(rargs.ExternalJobID.String())
 	ocr2keeperRelayer := NewOCR2KeeperRelayer(r.ds, r.chain, lggr.Named("OCR2KeeperRelayer"), r.ks.Eth())
 
-	return ocr2keeperRelayer.NewOCR2KeeperProvider(rargs, pargs)
+	return ocr2keeperRelayer.NewOCR2KeeperProvider(ctx, rargs, pargs)
 }
 
 func chainToUUID(chainID *big.Int) uuid.UUID {
@@ -807,10 +804,7 @@ func chainToUUID(chainID *big.Int) uuid.UUID {
 // which *type* (impl) of CCIPCommitProvider should be created. CCIP is currently a special case where the provider has a
 // subset of implementations of the complete interface as certain contracts in a CCIP lane are only deployed on the src
 // chain or on the dst chain. This results in the two implementations of providers: a src and dst implementation.
-func (r *Relayer) NewCCIPCommitProvider(rargs commontypes.RelayArgs, pargs commontypes.PluginArgs) (commontypes.CCIPCommitProvider, error) {
-	// TODO https://smartcontract-it.atlassian.net/browse/BCF-2887
-	ctx := context.Background()
-
+func (r *Relayer) NewCCIPCommitProvider(ctx context.Context, rargs commontypes.RelayArgs, pargs commontypes.PluginArgs) (commontypes.CCIPCommitProvider, error) {
 	versionFinder := ccip.NewEvmVersionFinder()
 
 	var commitPluginConfig ccipconfig.CommitPluginConfig
@@ -874,10 +868,7 @@ func (r *Relayer) NewCCIPCommitProvider(rargs commontypes.RelayArgs, pargs commo
 // which *type* (impl) of CCIPExecProvider should be created. CCIP is currently a special case where the provider has a
 // subset of implementations of the complete interface as certain contracts in a CCIP lane are only deployed on the src
 // chain or on the dst chain. This results in the two implementations of providers: a src and dst implementation.
-func (r *Relayer) NewCCIPExecProvider(rargs commontypes.RelayArgs, pargs commontypes.PluginArgs) (commontypes.CCIPExecProvider, error) {
-	// TODO https://smartcontract-it.atlassian.net/browse/BCF-2887
-	ctx := context.Background()
-
+func (r *Relayer) NewCCIPExecProvider(ctx context.Context, rargs commontypes.RelayArgs, pargs commontypes.PluginArgs) (commontypes.CCIPExecProvider, error) {
 	versionFinder := ccip.NewEvmVersionFinder()
 
 	var execPluginConfig ccipconfig.ExecPluginConfig

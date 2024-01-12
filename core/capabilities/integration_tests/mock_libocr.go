@@ -121,7 +121,7 @@ func (m *mockLibOCR) simulateProtocolRound(ctx context.Context) error {
 
 	var outcomes []ocr3types.Outcome
 	for _, node := range m.nodes {
-		outcome, err2 := node.Outcome(m.outcomeCtx, query, observations)
+		outcome, err2 := node.Outcome(ctx, m.outcomeCtx, query, observations)
 		if err2 != nil {
 			return fmt.Errorf("failed to get outcome: %w", err)
 		}
@@ -140,7 +140,7 @@ func (m *mockLibOCR) simulateProtocolRound(ctx context.Context) error {
 		}
 	}
 
-	reports, err := leader.Reports(0, outcomes[0])
+	reports, err := leader.Reports(ctx, 0, outcomes[0])
 	if err != nil {
 		return fmt.Errorf("failed to get reports: %w", err)
 	}

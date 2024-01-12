@@ -140,7 +140,7 @@ func TestEvmWrite(t *testing.T) {
 	keyStore := cltest.NewKeyStore(t, db)
 
 	lggr := logger.TestLogger(t)
-	relayer, err := relayevm.NewRelayer(lggr, chain, relayevm.RelayerOpts{
+	relayer, err := relayevm.NewRelayer(testutils.Context(t), lggr, chain, relayevm.RelayerOpts{
 		DS:                   db,
 		CSAETHKeystore:       keyStore,
 		CapabilitiesRegistry: evmcapabilities.NewRegistry(lggr),

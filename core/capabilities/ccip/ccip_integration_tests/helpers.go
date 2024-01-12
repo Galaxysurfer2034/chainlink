@@ -504,6 +504,7 @@ func (h *homeChain) AddDON(
 			schedule,
 			oracles,
 			encodedOffchainConfig,
+			nil,
 			MaxDurationQuery,
 			MaxDurationObservation,
 			MaxDurationShouldAcceptAttestedReport,
