@@ -27,15 +27,17 @@ type LoopRegistry struct {
 	mu       sync.Mutex
 	registry map[string]*RegisteredLoop
 
-	lggr       logger.Logger
-	cfgTracing config.Tracing
+	lggr        logger.Logger
+	cfgTracing  config.Tracing
+	cfgDatabase config.Database
 }
 
-func NewLoopRegistry(lggr logger.Logger, tracingConfig config.Tracing) *LoopRegistry {
+func NewLoopRegistry(lggr logger.Logger, tracingConfig config.Tracing, dbConfig config.Database) *LoopRegistry {
 	return &LoopRegistry{
-		registry:   map[string]*RegisteredLoop{},
-		lggr:       logger.Named(lggr, "LoopRegistry"),
-		cfgTracing: tracingConfig,
+		registry:    map[string]*RegisteredLoop{},
+		lggr:        logger.Named(lggr, "LoopRegistry"),
+		cfgTracing:  tracingConfig,
+		cfgDatabase: dbConfig,
 	}
 }
 
@@ -63,6 +65,17 @@ func (m *LoopRegistry) Register(id string) (*RegisteredLoop, error) {
 		envCfg.TracingSamplingRatio = m.cfgTracing.SamplingRatio()
 		envCfg.TracingTLSCertPath = m.cfgTracing.TLSCertPath()
 		envCfg.TracingAttributes = m.cfgTracing.Attributes()
+	}
+
+	if m.cfgDatabase != nil {
+		dbURL := m.cfgDatabase.URL()
+		envCfg.DatabaseURL = &dbURL
+		envCfg.DatabaseIdleInTxSessionTimeout = m.cfgDatabase.DefaultIdleInTxSessionTimeout()
+		envCfg.DatabaseLockTimeout = m.cfgDatabase.DefaultLockTimeout()
+		envCfg.DatabaseQueryTimeout = m.cfgDatabase.DefaultQueryTimeout()
+		envCfg.DatabaseLogSQL = m.cfgDatabase.LogSQL()
+		envCfg.DatabaseMaxOpenConns = m.cfgDatabase.MaxOpenConns()
+		envCfg.DatabaseMaxIdleConns = m.cfgDatabase.MaxIdleConns()
 	}
 
 	m.registry[id] = &RegisteredLoop{Name: id, EnvCfg: envCfg}
