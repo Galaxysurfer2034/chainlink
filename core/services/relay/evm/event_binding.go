@@ -39,11 +39,12 @@ type eventBinding struct {
 	inputModifier  codec.Modifier
 	codecTopicInfo types.CodecEntry
 	// topics maps a generic topic name (key) to topic data
-	topics map[string]topicDetail
-	// eventDataWords maps a generic name to a word index
+	topics        map[string]topicDetail
+	dataWordsInfo eventDataWords
+	// dataWordsMapping maps a generic name to a word index
 	// key is a predefined generic name for evm log event data word
 	// for e.g. first evm data word(32bytes) of USDC log event is value so the key can be called value
-	eventDataWords       map[string]uint8
+	dataWordsMapping     map[string]uint8
 	confirmationsMapping map[primitives.ConfidenceLevel]evmtypes.Confirmations
 }
 
@@ -205,24 +206,7 @@ func (e *eventBinding) getLatestValueWithoutFilters(ctx context.Context, confs e
 
 func (e *eventBinding) getLatestValueWithFilters(
 	ctx context.Context, confs evmtypes.Confirmations, params, into any) error {
-	offChain, err := e.convertToOffChainType(params)
-	if err != nil {
-		return err
-	}
-
-	// convert caller chain agnostic params types to types representing onchain abi types, for e.g. bytes32.
-	checkedParams, err := e.inputModifier.TransformToOnChain(offChain, "" /* unused */)
-	if err != nil {
-		return err
-	}
-
-	// convert onchain params to native types similarly to generated abi wrappers, for e.g. fixed bytes32 abi type to [32]uint8.
-	nativeParams, err := e.inputInfo.ToNative(reflect.ValueOf(checkedParams))
-	if err != nil {
-		return err
-	}
-
-	filtersAndIndices, err := e.encodeParams(nativeParams)
+	filtersAndIndices, err := e.topicsStructToTopicHashes(params)
 	if err != nil {
 		return err
 	}
@@ -262,6 +246,33 @@ func createTopicFilters(filtersAndIndices []common.Hash) query.Expression {
 		))
 	}
 	return query.And(expressions...)
+}
+
+// topicsStructToTopicHashes struct fields to event topics.
+func (e *eventBinding) topicsStructToTopicHashes(topicsAsStructFields any) ([]common.Hash, error) {
+	offChain, err := e.convertToOffChainType(topicsAsStructFields)
+	if err != nil {
+		return nil, err
+	}
+
+	// convert caller chain agnostic params types to types representing onchain abi types, for e.g. bytes32.
+	checkedParams, err := e.inputModifier.TransformToOnChain(offChain, "" /* unused */)
+	if err != nil {
+		return nil, err
+	}
+
+	// convert onchain params to native types similarly to generated abi wrappers, for e.g. fixed bytes32 abi type to [32]uint8.
+	nativeParams, err := e.inputInfo.ToNative(reflect.ValueOf(checkedParams))
+	if err != nil {
+		return nil, err
+	}
+
+	filtersAndIndices, err := e.encodeParams(nativeParams)
+	if err != nil {
+		return nil, err
+	}
+
+	return filtersAndIndices, nil
 }
 
 // convertToOffChainType creates a struct based on contract abi with applied codec modifiers.
@@ -355,7 +366,7 @@ func (e *eventBinding) decodeLog(ctx context.Context, log *logpoller.Log, into a
 		return err
 	}
 
-	// decode indexed topics which is rarely useful since most indexed topic types get Keccak256 hashed and should be just used for log filtering.
+	// decode  topics and indexed topics which are rarely useful since most indexed topic types get Keccak256 hashed and should be just used for log filtering.
 	topics := make([]common.Hash, len(e.codecTopicInfo.Args()))
 	if len(log.Topics) < len(topics)+1 {
 		return fmt.Errorf("%w: not enough topics to decode", commontypes.ErrInvalidType)
@@ -449,7 +460,7 @@ func (e *eventBinding) remapPrimitive(key string, expression query.Expression) (
 	switch primitive := expression.Primitive.(type) {
 	// TODO comparator primitive should undergo codec transformations and do hashed types handling similarly to how GetLatestValue handles it BCI-3910
 	case *primitives.Comparator:
-		if val, ok := e.eventDataWords[primitive.Name]; ok {
+		if val, ok := e.dataWordsMapping[primitive.Name]; ok {
 			return logpoller.NewEventByWordFilter(e.hash, val, primitive.ValueComparators), nil
 		}
 		return logpoller.NewEventByTopicFilter(e.topics[key].Index, primitive.ValueComparators), nil
