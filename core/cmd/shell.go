@@ -23,14 +23,16 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/getsentry/sentry-go"
 	"github.com/gin-gonic/gin"
+	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/multierr"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/jmoiron/sqlx"
-
+	"github.com/smartcontractkit/chainlink-common/pkg/beholder"
 	"github.com/smartcontractkit/chainlink-common/pkg/loop"
 	"github.com/smartcontractkit/chainlink-common/pkg/sqlutil"
 	"github.com/smartcontractkit/chainlink-common/pkg/utils/mailbox"
@@ -63,19 +65,54 @@ var (
 	grpcOpts        loop.GRPCOpts
 )
 
-func initGlobals(cfgProm config.Prometheus, cfgTracing config.Tracing, logger logger.Logger) error {
+func initGlobals(ctx context.Context, cfgProm config.Prometheus, cfgTracing config.Tracing, cfgTelemetry config.Telemetry, lggr logger.Logger) error {
 	// Avoid double initializations, but does not prevent relay methods from being called multiple times.
 	var err error
 	initGlobalsOnce.Do(func() {
-		prometheus = ginprom.New(ginprom.Namespace("service"), ginprom.Token(cfgProm.AuthToken()))
-		grpcOpts = loop.NewGRPCOpts(nil) // default prometheus.Registerer
-		err = loop.SetupTracing(loop.TracingConfig{
-			Enabled:         cfgTracing.Enabled(),
-			CollectorTarget: cfgTracing.CollectorTarget(),
-			NodeAttributes:  cfgTracing.Attributes(),
-			SamplingRatio:   cfgTracing.SamplingRatio(),
-			OnDialError:     func(error) { logger.Errorw("Failed to dial", "err", err) },
-		})
+		err = func() error {
+			prometheus = ginprom.New(ginprom.Namespace("service"), ginprom.Token(cfgProm.AuthToken()))
+			grpcOpts = loop.NewGRPCOpts(nil) // default prometheus.Registerer
+
+			otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) {
+				lggr.Errorw("Telemetry error", "err", err)
+			}))
+
+			tracingCfg := loop.TracingConfig{
+				Enabled:         cfgTracing.Enabled(),
+				CollectorTarget: cfgTracing.CollectorTarget(),
+				NodeAttributes:  cfgTracing.Attributes(),
+				SamplingRatio:   cfgTracing.SamplingRatio(),
+				OnDialError:     func(error) { lggr.Errorw("Failed to dial", "err", err) },
+			}
+			if cfgTelemetry.OtelExporterGRPCEndpoint() == "" {
+				return loop.SetupTracing(tracingCfg)
+			}
+
+			var attributes []attribute.KeyValue
+			for k, v := range cfgTelemetry.ResourceAttributes() {
+				attributes = append(attributes, attribute.String(k, v))
+			}
+			clientCfg := beholder.Config{
+				InsecureConnection:       cfgTelemetry.InsecureConnection(),
+				CACertFile:               cfgTelemetry.CACertFile(),
+				OtelExporterGRPCEndpoint: cfgTelemetry.OtelExporterGRPCEndpoint(),
+				ResourceAttributes:       attributes,
+				TraceSampleRatio:         cfgTelemetry.TraceSampleRatio(),
+			}
+			if tracingCfg.Enabled {
+				clientCfg.TraceSpanExporter, err = tracingCfg.NewSpanExporter()
+				if err != nil {
+					return err
+				}
+			}
+			var beholderClient *beholder.Client
+			beholderClient, err = beholder.NewClient(ctx, clientCfg)
+			if err != nil {
+				return err
+			}
+			beholder.SetClient(beholderClient)
+			return nil
+		}()
 	})
 	return err
 }
@@ -138,7 +175,7 @@ type ChainlinkAppFactory struct{}
 
 // NewApplication returns a new instance of the node with the given config.
 func (n ChainlinkAppFactory) NewApplication(ctx context.Context, cfg chainlink.GeneralConfig, appLggr logger.Logger, db *sqlx.DB) (app chainlink.Application, err error) {
-	err = initGlobals(cfg.Prometheus(), cfg.Tracing(), appLggr)
+	err = initGlobals(ctx, cfg.Prometheus(), cfg.Tracing(), cfg.Telemetry(), appLggr)
 	if err != nil {
 		appLggr.Errorf("Failed to initialize globals: %v", err)
 	}

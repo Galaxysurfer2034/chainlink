@@ -57,6 +57,7 @@ type Core struct {
 	Tracing          Tracing          `toml:",omitempty"`
 	Mercury          Mercury          `toml:",omitempty"`
 	Capabilities     Capabilities     `toml:",omitempty"`
+	Telemetry        Telemetry        `toml:",omitempty"`
 }
 
 // SetFrom updates c with any non-nil values from f. (currently TOML field only!)
@@ -93,6 +94,7 @@ func (c *Core) SetFrom(f *Core) {
 	c.Sentry.setFrom(&f.Sentry)
 	c.Insecure.setFrom(&f.Insecure)
 	c.Tracing.setFrom(&f.Tracing)
+	c.Telemetry.setFrom(&f.Telemetry)
 }
 
 func (c *Core) ValidateConfig() (err error) {
@@ -1481,25 +1483,25 @@ type Tracing struct {
 
 func (t *Tracing) setFrom(f *Tracing) {
 	if v := f.Enabled; v != nil {
-		t.Enabled = f.Enabled
+		t.Enabled = v
 	}
 	if v := f.CollectorTarget; v != nil {
-		t.CollectorTarget = f.CollectorTarget
+		t.CollectorTarget = v
 	}
 	if v := f.NodeID; v != nil {
-		t.NodeID = f.NodeID
+		t.NodeID = v
 	}
 	if v := f.Attributes; v != nil {
-		t.Attributes = f.Attributes
+		t.Attributes = v
 	}
 	if v := f.SamplingRatio; v != nil {
-		t.SamplingRatio = f.SamplingRatio
+		t.SamplingRatio = v
 	}
 	if v := f.Mode; v != nil {
-		t.Mode = f.Mode
+		t.Mode = v
 	}
 	if v := f.TLSCertPath; v != nil {
-		t.TLSCertPath = f.TLSCertPath
+		t.TLSCertPath = v
 	}
 }
 
@@ -1551,6 +1553,61 @@ func (t *Tracing) ValidateConfig() (err error) {
 	}
 
 	return err
+}
+
+type Telemetry struct {
+	Enabled            *bool
+	CACertFile         *string
+	Endpoint           *string
+	InsecureConnection *bool
+	//TODO for all or just tracing?
+	ResourceAttributes map[string]string `toml:",omitempty"`
+	//TODO trace section?
+	TraceSampleRatio *float64
+}
+
+func (b *Telemetry) setFrom(f *Telemetry) {
+	if v := f.Enabled; v != nil {
+		b.Enabled = v
+	}
+	if v := f.CACertFile; v != nil {
+		b.CACertFile = v
+	}
+	if v := f.Endpoint; v != nil {
+		b.Endpoint = v
+	}
+	if v := f.InsecureConnection; v != nil {
+		b.InsecureConnection = v
+	}
+	if v := f.ResourceAttributes; v != nil {
+		b.ResourceAttributes = v
+	}
+	if v := f.TraceSampleRatio; v != nil {
+		b.TraceSampleRatio = v
+	}
+}
+
+func (b *Telemetry) ValidateConfig() (err error) {
+	if b.Enabled == nil || !*b.Enabled {
+		return nil
+	}
+	if b.Endpoint == nil || *b.Endpoint == "" {
+		err = multierr.Append(err, configutils.ErrMissing{Name: "Endpoint", Msg: "must be set when Telemetry is enabled"})
+	}
+	if b.InsecureConnection != nil && *b.InsecureConnection {
+		if build.IsProd() {
+			err = multierr.Append(err, configutils.ErrInvalid{Name: "InsecureConnection", Msg: "cannot be used in production builds"})
+		}
+	} else {
+		if b.CACertFile == nil || *b.CACertFile == "" {
+			err = multierr.Append(err, configutils.ErrMissing{Name: "CACertFile", Msg: "must be set, unless InsecureConnection is used"})
+		}
+	}
+	if ratio := b.TraceSampleRatio; ratio != nil && (*ratio < 0 || *ratio > 1) {
+		err = multierr.Append(err, configutils.ErrInvalid{Name: "TraceSampleRatio", Value: *ratio, Msg: "must be between 0 and 1"})
+	}
+
+	return nil
 }
 
 var hostnameRegex = regexp.MustCompile(`^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*$`)

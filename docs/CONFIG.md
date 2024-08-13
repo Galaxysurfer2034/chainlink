@@ -1768,6 +1768,60 @@ TransmitTimeout controls how long the transmitter will wait for a response
 when sending a message to the mercury server, before aborting and considering
 the transmission to be failed.
 
+## Telemetry
+```toml
+[Telemetry]
+Enabled = false # Default
+Endpoint = 'example.com/collector' # Example
+CACertFile = 'cert-file' # Example
+InsecureConnection = false # Default
+TraceSampleRatio = 0.01 # Default
+```
+
+
+### Enabled
+```toml
+Enabled = false # Default
+```
+Enabled turns telemetry collection on or off.
+
+### Endpoint
+```toml
+Endpoint = 'example.com/collector' # Example
+```
+Endpoint TODO
+
+### CACertFile
+```toml
+CACertFile = 'cert-file' # Example
+```
+CACertFile TODO
+
+### InsecureConnection
+```toml
+InsecureConnection = false # Default
+```
+InsecureConnection TODO
+
+### TraceSampleRatio
+```toml
+TraceSampleRatio = 0.01 # Default
+```
+TraceSampleRatio TODO
+
+## Telemetry.ResourceAttributes
+```toml
+[Telemetry.ResourceAttributes]
+foo = "bar" # Example
+```
+
+
+### foo
+```toml
+foo = "bar" # Example
+```
+foo is an example resource attribute
+
 ## EVM
 EVM defaults depend on ChainID:
 

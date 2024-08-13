@@ -14,6 +14,9 @@ import (
 	"github.com/grafana/pyroscope-go"
 	"github.com/jonboulle/clockwork"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/multierr"
 	"go.uber.org/zap/zapcore"
 
@@ -644,6 +647,14 @@ func (app *ChainlinkApplication) Start(ctx context.Context) error {
 	if app.started {
 		panic("application is already started")
 	}
+
+	var span trace.Span
+	ctx, span = otel.Tracer("").Start(ctx, "Start", trace.WithAttributes(
+		attribute.String("app-id", app.ID().String()),
+		attribute.String("version", static.Version),
+		attribute.String("commit", static.Sha),
+	))
+	defer span.End()
 
 	if app.FeedsService != nil {
 		if err := app.FeedsService.Start(ctx); err != nil {

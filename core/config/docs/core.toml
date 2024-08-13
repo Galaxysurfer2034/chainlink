@@ -651,3 +651,19 @@ TransmitQueueMaxSize = 10_000 # Default
 # when sending a message to the mercury server, before aborting and considering
 # the transmission to be failed.
 TransmitTimeout = "5s" # Default
+
+[Telemetry]
+# Enabled turns telemetry collection on or off.
+Enabled = false # Default
+# Endpoint TODO
+Endpoint = 'example.com/collector' # Example
+# CACertFile TODO
+CACertFile = 'cert-file' # Example
+# InsecureConnection TODO
+InsecureConnection = false # Default
+# TraceSampleRatio TODO
+TraceSampleRatio = 0.01 # Default
+
+[Telemetry.ResourceAttributes]
+# foo is an example resource attribute
+foo = "bar" # Example
