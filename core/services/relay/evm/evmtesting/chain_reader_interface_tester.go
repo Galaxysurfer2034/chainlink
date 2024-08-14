@@ -271,7 +271,23 @@ func (it *EVMChainReaderInterfaceTester[T]) SetUintLatestValue(t T, val uint64, 
 }
 
 func (it *EVMChainReaderInterfaceTester[T]) TriggerEvent(t T, testStruct *TestStruct) {
-	it.sendTxWithTestStruct(t, it.address, testStruct, (*chain_reader_tester.ChainReaderTesterTransactor).TriggerEvent)
+	tx, err := (*chain_reader_tester.ChainReaderTesterTransactor).TriggerEvent(
+		&it.contractTesters[it.address].ChainReaderTesterTransactor,
+		it.GetAuthWithGasSet(t),
+		*testStruct.Field,
+		MidToInternalType(testStruct.NestedStruct),
+		testStruct.DifferentField,
+		uint8(testStruct.OracleID),
+		OracleIdsToBytes(testStruct.OracleIDs),
+		common.Address(testStruct.Account),
+		ConvertAccounts(testStruct.Accounts),
+		testStruct.BigField,
+	)
+	require.NoError(t, err)
+	it.Helper.Commit()
+	it.IncNonce()
+	it.AwaitTx(t, tx)
+	it.dirtyContracts = true
 }
 
 // GenerateBlocksTillConfidenceLevel is supposed to be used for testing confidence levels, but geth simulated backend doesn't support calling past state
