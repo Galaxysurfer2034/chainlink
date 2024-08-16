@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -286,9 +285,9 @@ func (cr *chainReader) addEvent(contractName, eventName string, a abi.ABI, chain
 		inputInfo:            inputInfo,
 		inputModifier:        inputModifier,
 		codecTopicInfo:       codecTopicInfo,
-		topics:               make(map[string]topicDetail),
 		dataWordsInfo:        eventDws,
 		dataWordsMapping:     make(map[string]uint8),
+		topics:               make(map[string]topicDetail),
 		confirmationsMapping: confirmations,
 	}
 
@@ -296,58 +295,51 @@ func (cr *chainReader) addEvent(contractName, eventName string, a abi.ABI, chain
 		if eventDefinitions.PollingFilter != nil {
 			eb.filterRegisterer = &filterRegisterer{
 				pollingFilter: eventDefinitions.PollingFilter.ToLPFilter(evmtypes.HashArray{a.Events[event.Name].ID}),
-				filterLock:    sync.Mutex{},
 			}
 		}
 
-		if eventDefinitions.GenericDataWordNames != nil {
-			eb.dataWordsMapping = eventDefinitions.GenericDataWordNames
-		}
-
-		if err = cr.initCodecForTopicQuerying(eventDefinitions.GenericTopicNames, event.Inputs, eb); err != nil {
+		if err = cr.initTopicQuerying(eb, event.Inputs, eventDefinitions.GenericTopicNames, chainReaderDefinition.InputModifications); err != nil {
 			return err
 		}
 
-		if err = cr.initCodecForDWQuerying(eb); err != nil {
+		if err = cr.initDWQuerying(eb, eventDefinitions.GenericDataWordNames); err != nil {
 			return err
 		}
 	}
 
 	cr.bindings.AddReadBinding(contractName, eventName, eb)
-
 	return cr.addDecoderDef(contractName, eventName, event.Inputs, chainReaderDefinition.OutputModifications)
 }
 
-// initCodecForTopicQuerying reuses the eventBinding and maps it to topic and dataWord keys used for QueryKey.
-func (cr *chainReader) initCodecForTopicQuerying(genericTopicNames map[string]string, eventInputs abi.Arguments, eb *eventBinding) error {
-	// add topic readBindings for QueryKey
+// initTopicQuerying adds codec types for topics that are used for typing over the wire bytes used in value comparator QueryKey filters.
+func (cr *chainReader) initTopicQuerying(eb *eventBinding, eventInputs abi.Arguments, genericTopicNames map[string]string, inputModifications codec.ModifiersConfig) error {
 	for topicIndex, topic := range eventInputs {
 		genericTopicName, ok := genericTopicNames[topic.Name]
 		if ok {
-			eb.topics[genericTopicName] = topicDetail{
-				Argument: topic,
-				Index:    uint64(topicIndex),
-			}
+			// TODO how did this work before with topicIndex not having a +1
+			eb.topics[genericTopicName] = topicDetail{Argument: topic, Index: uint64(topicIndex + 1)}
 			// Encoder defs codec won't be used for encoding, but for storing caller filtering params which won't be hashed.
-			if err := cr.addEncoderDef(eb.contractName, eb.eventName+"."+genericTopicName, abi.Arguments{topic}, nil, nil); err != nil {
+			if err := cr.addEncoderDef(eb.contractName, eb.eventName+"."+genericTopicName, abi.Arguments{{Type: topic.Type}}, nil, inputModifications); err != nil {
 				return err
 			}
 		}
 	}
-
 	return nil
 }
 
-func (cr *chainReader) initCodecForDWQuerying(eb *eventBinding) error {
+// initDWQuerying adds codec types for data words that are used for typing over the wire bytes used in value comparator QueryKey filters.
+func (cr *chainReader) initDWQuerying(eb *eventBinding, genericDataWordNames map[string]uint8) error {
+	eb.dataWordsMapping = genericDataWordNames
 	for genericDataWordName, dwIndex := range eb.dataWordsMapping {
 		dwsInfo := eb.dataWordsInfo
 		if dwIndex > uint8(len(dwsInfo)-1) {
 			// TODO improve this error
 			return errors.New("invalid data word index")
 		}
-
-		if err := cr.addEncoderDef(eb.contractName, eb.eventName+"."+genericDataWordName, abi.Arguments{dwsInfo[dwIndex].Argument}, nil, nil); err != nil {
-			return err
+		// TODO add only dws from config? Or not?
+		dwName, dwArg := eb.eventName+"."+genericDataWordName, dwsInfo[dwIndex].Argument
+		if err := cr.addEncoderDef(eb.contractName, dwName, abi.Arguments{{Type: dwArg.Type}}, nil, nil); err != nil {
+			return fmt.Errorf("%w: failed to init codec for data word %s on index %d querying for event: %q", err, dwName, dwIndex, eb.eventName)
 		}
 	}
 	return nil
@@ -369,15 +361,6 @@ func (cr *chainReader) getEventInput(def types.ChainReaderDefinition, contractNa
 	}
 
 	return inputInfo, inMod, nil
-}
-
-func verifyEventIndexedInputsUsed(eventName string, inputFields []string, indexArgNames map[string]bool) error {
-	for _, value := range inputFields {
-		if !indexArgNames[abi.ToCamelCase(value)] {
-			return fmt.Errorf("%w: %s is not an indexed argument of event %s", commontypes.ErrInvalidConfig, value, eventName)
-		}
-	}
-	return nil
 }
 
 func (cr *chainReader) addEncoderDef(contractName, itemType string, args abi.Arguments, prefix []byte, inputModifications codec.ModifiersConfig) error {
@@ -422,7 +405,7 @@ func setupEventInput(event abi.Event, inputFields []string) ([]abi.Argument, typ
 	eventDws := eventDataWords{}
 	for _, input := range event.Inputs {
 		if !input.Indexed {
-			eventDws = append(eventDws, mapTypes(input.Type, input.Name)...)
+			eventDws = append(eventDws, extractDataWordsFromType(input.Type, input.Name)...)
 			continue
 		}
 
@@ -441,6 +424,15 @@ func setupEventInput(event abi.Event, inputFields []string) ([]abi.Argument, typ
 	}
 
 	return filterArgs, types.NewCodecEntry(inputArgs, nil, nil), indexArgNames, eventDws
+}
+
+func verifyEventIndexedInputsUsed(eventName string, inputFields []string, indexArgNames map[string]bool) error {
+	for _, value := range inputFields {
+		if !indexArgNames[abi.ToCamelCase(value)] {
+			return fmt.Errorf("%w: %s is not an indexed argument of event %s", commontypes.ErrInvalidConfig, value, eventName)
+		}
+	}
+	return nil
 }
 
 // ConfirmationsFromConfig maps chain agnostic confidence levels defined in config to predefined EVM finality.
@@ -487,11 +479,11 @@ type dataWordInfo struct {
 	IsDynamic bool // Indicates if the field is a dynamic type (string, bytes, etc.)
 }
 
-func mapTypes(typ abi.Type, prefix string) eventDataWords {
+func extractDataWordsFromType(typ abi.Type, prefix string) eventDataWords {
 	var eventDws eventDataWords
 	if typ.T == abi.TupleTy {
 		for i, field := range typ.TupleElems {
-			eventDws = append(eventDws, mapTypes(*field, prefix+"."+typ.TupleType.Field(i).Name)...)
+			eventDws = append(eventDws, extractDataWordsFromType(*field, prefix+"."+typ.TupleType.Field(i).Name)...)
 		}
 	} else {
 		eventDws = append(eventDws, dataWordInfo{
