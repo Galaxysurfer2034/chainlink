@@ -23,8 +23,8 @@ import (
 	"github.com/smartcontractkit/chainlink/v2/core/chains/evm/logpoller"
 	evmtypes "github.com/smartcontractkit/chainlink/v2/core/chains/evm/types"
 	"github.com/smartcontractkit/chainlink/v2/core/services"
-	"github.com/smartcontractkit/chainlink/v2/core/services/relay/evm/binding"
 	"github.com/smartcontractkit/chainlink/v2/core/services/relay/evm/codec"
+	"github.com/smartcontractkit/chainlink/v2/core/services/relay/evm/read"
 	"github.com/smartcontractkit/chainlink/v2/core/services/relay/evm/types"
 )
 
@@ -39,7 +39,7 @@ type chainReader struct {
 	lp       logpoller.LogPoller
 	client   evmclient.Client
 	parsed   *codec.ParsedTypes
-	bindings *binding.NamedBindings
+	bindings *read.BindingsRegistry
 	codec    commontypes.RemoteCodec
 	commonservices.StateMachine
 }
@@ -57,7 +57,7 @@ func NewChainReaderService(ctx context.Context, lggr logger.Logger, lp logpoller
 		ht:       ht,
 		lp:       lp,
 		client:   client,
-		bindings: binding.NewNamedBindings(),
+		bindings: read.NewBindingsRegistry(),
 		parsed:   &codec.ParsedTypes{EncoderDefs: map[string]types.CodecEntry{}, DecoderDefs: map[string]types.CodecEntry{}},
 	}
 
@@ -70,13 +70,13 @@ func NewChainReaderService(ctx context.Context, lggr logger.Logger, lp logpoller
 		return nil, err
 	}
 
-	cr.bindings.SetBatchCaller(binding.NewDynamicLimitedBatchCaller(
+	cr.bindings.SetBatchCaller(read.NewDynamicLimitedBatchCaller(
 		cr.lggr,
 		cr.codec,
 		cr.client,
-		binding.DefaultRpcBatchSizeLimit,
-		binding.DefaultRpcBatchBackOffMultiplier,
-		binding.DefaultMaxParallelRpcCalls,
+		read.DefaultRpcBatchSizeLimit,
+		read.DefaultRpcBatchBackOffMultiplier,
+		read.DefaultMaxParallelRpcCalls,
 	))
 
 	cr.bindings.SetCodecAll(cr.codec)
@@ -132,7 +132,9 @@ func (cr *chainReader) init(chainContractReaders map[string]types.ChainContractR
 			return fmt.Errorf("%w: no read bindings added for contract: %s", commontypes.ErrInvalidConfig, contractName)
 		}
 
-		cr.bindings.WithFilter(contractName, chainContractReader.PollingFilter.ToLPFilter(eventSigsForContractFilter))
+		if err := cr.bindings.SetFilter(contractName, chainContractReader.PollingFilter.ToLPFilter(eventSigsForContractFilter)); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -224,7 +226,7 @@ func (cr *chainReader) addMethod(
 		return err
 	}
 
-	cr.bindings.AddReader(contractName, methodName, binding.NewMethodBinding(contractName, methodName, cr.client, cr.ht, confirmations, cr.lggr))
+	cr.bindings.AddReader(contractName, methodName, read.NewMethodBinding(contractName, methodName, cr.client, cr.ht, confirmations, cr.lggr))
 
 	if err := cr.addEncoderDef(contractName, methodName, method.Inputs, method.ID, chainReaderDefinition.InputModifications); err != nil {
 		return err
@@ -268,10 +270,10 @@ func (cr *chainReader) addEvent(contractName, eventName string, a abi.ABI, chain
 		return err
 	}
 
-	eb := binding.NewEventBinding(contractName, eventName, cr.lp, event.ID, inputInfo, inputModifier, codecTopicInfo, confirmations)
+	eb := read.NewEventBinding(contractName, eventName, cr.lp, event.ID, inputInfo, inputModifier, codecTopicInfo, confirmations)
 	if eventDefinitions := chainReaderDefinition.EventDefinitions; eventDefinitions != nil {
 		if eventDefinitions.PollingFilter != nil {
-			eb.WithFilter(eventDefinitions.PollingFilter.ToLPFilter(evmtypes.HashArray{a.Events[event.Name].ID}))
+			eb.SetFilter(eventDefinitions.PollingFilter.ToLPFilter(evmtypes.HashArray{a.Events[event.Name].ID}))
 		}
 
 		if eventDefinitions.GenericDataWordNames != nil {
@@ -287,7 +289,7 @@ func (cr *chainReader) addEvent(contractName, eventName string, a abi.ABI, chain
 }
 
 // addQueryingReadBindings reuses the eventBinding and maps it to topic and dataWord keys used for QueryKey.
-func (cr *chainReader) addQueryingReadBindings(contractName string, genericTopicNames map[string]string, eventInputs abi.Arguments, eb *binding.EventBinding) {
+func (cr *chainReader) addQueryingReadBindings(contractName string, genericTopicNames map[string]string, eventInputs abi.Arguments, eb *read.EventBinding) {
 	// add topic readBindings for QueryKey
 	for topicIndex, topic := range eventInputs {
 		genericTopicName, ok := genericTopicNames[topic.Name]
@@ -344,7 +346,7 @@ func (cr *chainReader) addDecoderDef(contractName, itemType string, outputs abi.
 		return err
 	}
 	output := types.NewCodecEntry(outputs, nil, mod)
-	cr.parsed.DecoderDefs[binding.WrapItemType(contractName, itemType, false)] = output
+	cr.parsed.DecoderDefs[read.WrapItemType(contractName, itemType, false)] = output
 	return output.Init()
 }
 

@@ -5,7 +5,7 @@ package mocks
 import (
 	context "context"
 
-	binding "github.com/smartcontractkit/chainlink/v2/core/services/relay/evm/binding"
+	binding "github.com/smartcontractkit/chainlink/v2/core/services/relay/evm/read"
 
 	mock "github.com/stretchr/testify/mock"
 )

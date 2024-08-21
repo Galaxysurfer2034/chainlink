@@ -1,4 +1,4 @@
-package binding
+package read
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 
-	"github.com/smartcontractkit/chainlink-common/pkg/types"
 	commontypes "github.com/smartcontractkit/chainlink-common/pkg/types"
 	"github.com/smartcontractkit/chainlink-common/pkg/types/query"
 	"github.com/smartcontractkit/chainlink-common/pkg/types/query/primitives"
@@ -30,7 +29,7 @@ type Reader interface {
 	Unregister(context.Context) error
 }
 
-type NamedBindings struct {
+type BindingsRegistry struct {
 	// dependencies
 	batch BatchCaller
 
@@ -40,21 +39,21 @@ type NamedBindings struct {
 	contractLookup   *lookup
 }
 
-func NewNamedBindings() *NamedBindings {
-	return &NamedBindings{
+func NewBindingsRegistry() *BindingsRegistry {
+	return &BindingsRegistry{
 		contractBindings: make(map[string]*contractBinding),
 		contractLookup:   newLookup(),
 	}
 }
 
-func (b *NamedBindings) SetBatchCaller(caller BatchCaller) {
+func (b *BindingsRegistry) SetBatchCaller(caller BatchCaller) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	b.batch = caller
 }
 
-func (b *NamedBindings) HasContractBinding(contractName string) bool {
+func (b *BindingsRegistry) HasContractBinding(contractName string) bool {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
@@ -64,7 +63,7 @@ func (b *NamedBindings) HasContractBinding(contractName string) bool {
 }
 
 // TODO: GetReader needs to accept a readName and do a mapping to bound contracts
-func (b *NamedBindings) GetReader(readName string) (Reader, string, error) {
+func (b *BindingsRegistry) GetReader(readName string) (Reader, string, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
@@ -88,7 +87,7 @@ func (b *NamedBindings) GetReader(readName string) (Reader, string, error) {
 	return binding, values.address, nil
 }
 
-func (b *NamedBindings) AddReader(contractName, methodName string, rdr Reader) {
+func (b *BindingsRegistry) AddReader(contractName, methodName string, rdr Reader) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -105,7 +104,7 @@ func (b *NamedBindings) AddReader(contractName, methodName string, rdr Reader) {
 
 // Bind binds contract addresses to contract bindings and read bindings.
 // Bind also registers the common contract polling filter and eventBindings polling filters.
-func (b *NamedBindings) Bind(ctx context.Context, reg Registrar, bindings []commontypes.BoundContract) error {
+func (b *BindingsRegistry) Bind(ctx context.Context, reg Registrar, bindings []commontypes.BoundContract) error {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
@@ -128,21 +127,21 @@ func (b *NamedBindings) Bind(ctx context.Context, reg Registrar, bindings []comm
 	return nil
 }
 
-func (b *NamedBindings) BatchGetLatestValues(ctx context.Context, request commontypes.BatchGetLatestValuesRequest) (commontypes.BatchGetLatestValuesResult, error) {
+func (b *BindingsRegistry) BatchGetLatestValues(ctx context.Context, request commontypes.BatchGetLatestValuesRequest) (commontypes.BatchGetLatestValuesResult, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
 	var batchCall BatchCall
 
-	for contractName, contractBatch := range request {
-		cb := b.contractBindings[contractName]
+	for binding, contractBatch := range request {
+		cb := b.contractBindings[binding.Name]
 
 		for i := range contractBatch {
 			req := contractBatch[i]
 
-			values, ok := b.contractLookup.getContractForReadName(req.ReadIdentifier)
+			values, ok := b.contractLookup.getContractForReadName(binding.ReadIdentifier(req.ReadName))
 			if !ok {
-				return nil, fmt.Errorf("%w: no method for read name %s", commontypes.ErrInvalidType, req.ReadIdentifier)
+				return nil, fmt.Errorf("%w: no method for read name %s", commontypes.ErrInvalidType, binding.ReadIdentifier(req.ReadName))
 			}
 
 			rdr, exists := cb.GetReaderNamed(values.method)
@@ -168,17 +167,23 @@ func (b *NamedBindings) BatchGetLatestValues(ctx context.Context, request common
 	// reconstruct results from batchCall and filteredLogs into common type while maintaining order from request.
 	batchGetLatestValuesResults := make(commontypes.BatchGetLatestValuesResult)
 	for contractName, contractResult := range results {
-		batchGetLatestValuesResults[contractName] = commontypes.ContractBatchResults{}
 		for _, methodResult := range contractResult {
+			binding := commontypes.BoundContract{
+				Name:    contractName,
+				Address: methodResult.Address,
+			}
+
 			brr := commontypes.BatchReadResult{
-				ReadIdentifier: types.BoundContract{
-					Address: methodResult.Address,
-					Name:    contractName,
-				}.ReadIdentifier(methodResult.MethodName),
+				ReadName: methodResult.MethodName,
 			}
 
 			brr.SetResult(methodResult.ReturnValue, methodResult.Err)
-			batchGetLatestValuesResults[contractName] = append(batchGetLatestValuesResults[contractName], brr)
+
+			if _, ok := batchGetLatestValuesResults[binding]; !ok {
+				batchGetLatestValuesResults[binding] = make(commontypes.ContractBatchResults, 0)
+			}
+
+			batchGetLatestValuesResults[binding] = append(batchGetLatestValuesResults[binding], brr)
 		}
 	}
 
@@ -186,7 +191,7 @@ func (b *NamedBindings) BatchGetLatestValues(ctx context.Context, request common
 }
 
 // Unbind unbinds contract addresses to contract bindings and read bindings.
-func (b *NamedBindings) Unbind(ctx context.Context, reg Registrar, bindings []commontypes.BoundContract) error {
+func (b *BindingsRegistry) Unbind(ctx context.Context, reg Registrar, bindings []commontypes.BoundContract) error {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
@@ -209,7 +214,7 @@ func (b *NamedBindings) Unbind(ctx context.Context, reg Registrar, bindings []co
 	return nil
 }
 
-func (b *NamedBindings) RegisterAll(ctx context.Context, reg Registrar) error {
+func (b *BindingsRegistry) RegisterAll(ctx context.Context, reg Registrar) error {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
@@ -222,7 +227,7 @@ func (b *NamedBindings) RegisterAll(ctx context.Context, reg Registrar) error {
 	return nil
 }
 
-func (b *NamedBindings) UnregisterAll(ctx context.Context, reg Registrar) error {
+func (b *BindingsRegistry) UnregisterAll(ctx context.Context, reg Registrar) error {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
@@ -235,7 +240,7 @@ func (b *NamedBindings) UnregisterAll(ctx context.Context, reg Registrar) error 
 	return nil
 }
 
-func (b *NamedBindings) SetCodecAll(codec commontypes.RemoteCodec) {
+func (b *BindingsRegistry) SetCodecAll(codec commontypes.RemoteCodec) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
@@ -244,16 +249,21 @@ func (b *NamedBindings) SetCodecAll(codec commontypes.RemoteCodec) {
 	}
 }
 
-func (b *NamedBindings) WithFilter(name string, filter logpoller.Filter) {
+func (b *BindingsRegistry) SetFilter(name string, filter logpoller.Filter) error {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
-	if contract, ok := b.contractBindings[name]; ok {
-		contract.WithFilter(filter)
+	contract, ok := b.contractBindings[name]
+	if !ok {
+		return fmt.Errorf("%w: no contract binding for %s", commontypes.ErrInvalidConfig, name)
 	}
+
+	contract.SetFilter(filter)
+
+	return nil
 }
 
-func (b *NamedBindings) ReadTypeIdentifier(readName string, forEncoding bool) string {
+func (b *BindingsRegistry) ReadTypeIdentifier(readName string, forEncoding bool) string {
 	values, ok := b.contractLookup.getContractForReadName(readName)
 	if !ok {
 		return ""

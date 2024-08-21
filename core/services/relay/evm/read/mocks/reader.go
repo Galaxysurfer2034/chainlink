@@ -4,7 +4,7 @@ package mocks
 
 import (
 	common "github.com/ethereum/go-ethereum/common"
-	binding "github.com/smartcontractkit/chainlink/v2/core/services/relay/evm/binding"
+	binding "github.com/smartcontractkit/chainlink/v2/core/services/relay/evm/read"
 
 	context "context"
 
