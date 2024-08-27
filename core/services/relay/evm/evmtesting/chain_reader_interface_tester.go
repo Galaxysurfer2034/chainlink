@@ -114,8 +114,7 @@ func (it *EVMChainReaderInterfaceTester[T]) Setup(t T) {
 						ChainSpecificName: "Triggered",
 						ReadType:          types.Event,
 						EventDefinitions: &types.EventDefinitions{
-							GenericTopicNames:    map[string]string{"field": "Field"},
-							GenericDataWordNames: map[string]uint8{"NestedStruct.FixedBytes": 0},
+							GenericTopicNames: map[string]string{"field": "Field"},
 						},
 						OutputModifications: codec.ModifiersConfig{
 							&codec.RenameModifierConfig{Fields: map[string]string{"NestedStruct.Inner.IntVal": "I"}},
