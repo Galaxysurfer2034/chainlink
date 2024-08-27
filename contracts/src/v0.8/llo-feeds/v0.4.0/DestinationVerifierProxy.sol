@@ -6,6 +6,7 @@ import {TypeAndVersionInterface} from "../../interfaces/TypeAndVersionInterface.
 import {IERC165} from "../../vendor/openzeppelin-solidity/v4.8.3/contracts/interfaces/IERC165.sol";
 import {IDestinationVerifierProxy} from "./interfaces/IDestinationVerifierProxy.sol";
 import {IDestinationVerifier} from "./interfaces/IDestinationVerifier.sol";
+import {IVerifier} from "./interfaces/IVerifier.sol";
 
 /**
  * @title DestinationVerifierProxy
@@ -48,8 +49,8 @@ contract DestinationVerifierProxy is IDestinationVerifierProxy, ConfirmedOwner, 
     if (
       !IERC165(verifierAddress).supportsInterface(IDestinationVerifier.s_accessController.selector) ||
       !IERC165(verifierAddress).supportsInterface(IDestinationVerifier.s_feeManager.selector) ||
-      !IERC165(verifierAddress).supportsInterface(IDestinationVerifier.verify.selector) ||
-      !IERC165(verifierAddress).supportsInterface(IDestinationVerifier.verifyBulk.selector)
+      !IERC165(verifierAddress).supportsInterface(IVerifier.verify.selector) ||
+      !IERC165(verifierAddress).supportsInterface(IVerifier.verifyBulk.selector)
     ) revert VerifierInvalid(verifierAddress);
 
     s_verifier = IDestinationVerifier(verifierAddress);

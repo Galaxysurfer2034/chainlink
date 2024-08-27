@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.19;
 
-import {ChannelConfigStore} from "../../ChannelConfigStore.sol";
+import {ChannelConfigStore} from "../../../v0.4.0/ChannelConfigStore.sol";
 
 // Exposed ChannelConfigStore exposes certain internal ChannelConfigStore
 // methods/structures so that golang code can access them, and we get

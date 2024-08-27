@@ -9,6 +9,7 @@ import {Common} from "../libraries/Common.sol";
 import {IAccessController} from "../../shared/interfaces/IAccessController.sol";
 import {IDestinationVerifierProxy} from "./interfaces/IDestinationVerifierProxy.sol";
 import {IDestinationFeeManager} from "./interfaces/IDestinationFeeManager.sol";
+import {IVerifier} from "./interfaces/IVerifier.sol";
 
 // OCR2 standard
 uint256 constant MAX_NUM_ORACLES = 31;
@@ -137,7 +138,7 @@ contract DestinationVerifier is IDestinationVerifier, ConfirmedOwner, TypeAndVer
     i_verifierProxy = IDestinationVerifierProxy(verifierProxy);
   }
 
-  /// @inheritdoc IDestinationVerifier
+  /// @inheritdoc IVerifier
   function verify(
     bytes calldata signedReport,
     bytes calldata parameterPayload,
@@ -159,7 +160,7 @@ contract DestinationVerifier is IDestinationVerifier, ConfirmedOwner, TypeAndVer
     return verifierResponse;
   }
 
-  /// @inheritdoc IDestinationVerifier
+  /// @inheritdoc IVerifier
   function verifyBulk(
     bytes[] calldata signedReports,
     bytes calldata parameterPayload,

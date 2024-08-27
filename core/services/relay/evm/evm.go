@@ -488,6 +488,8 @@ func (r *Relayer) NewConfigProvider(args commontypes.RelayArgs) (configProvider 
 	if args.ProviderType == "" {
 		if relayConfig.FeedID == nil {
 			args.ProviderType = "median"
+		} else if relayConfig.LLODONID > 0 {
+			args.ProviderType = "llo"
 		} else {
 			args.ProviderType = "mercury"
 		}

@@ -3,7 +3,7 @@ pragma solidity 0.8.19;
 
 import {IChannelConfigStore} from "../interfaces/IChannelConfigStore.sol";
 import {Test} from "forge-std/Test.sol";
-import {ChannelConfigStore} from "../ChannelConfigStore.sol";
+import {ChannelConfigStore} from "../../v0.4.0/ChannelConfigStore.sol";
 import {ExposedChannelConfigStore} from "./mocks/ExposedChannelConfigStore.sol";
 
 /**
