@@ -158,15 +158,13 @@ func ExtractReportValues(report llo.Report) (nativePrice, linkPrice *llo.Decimal
 // MERC-3524
 var LLOExtraHash = common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000001")
 
-// TODO: Should channel config contract address and don ID be in the offchain config?
-
 func LegacyReportContext(cd ocr2types.ConfigDigest, seqNr uint64) ocr2types.ReportContext {
 	// Simulate 256 rounds/epoch
 	epoch := seqNr / 256
 	round := seqNr % 256
 	return ocr2types.ReportContext{
 		ReportTimestamp: ocr2types.ReportTimestamp{
-			ConfigDigest: cd, // TODO: used on contracts as a "routing key", should be e.g. keccak256(signers, f, channel_definitions_contract_addr, don_id)
+			ConfigDigest: cd,
 			Epoch:        uint32(epoch),
 			Round:        uint8(round),
 		},
