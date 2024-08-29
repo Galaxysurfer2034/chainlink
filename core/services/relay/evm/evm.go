@@ -62,7 +62,6 @@ import (
 var (
 	OCR2AggregatorTransmissionContractABI abi.ABI
 	OCR2AggregatorLogDecoder              LogDecoder
-	ChannelVerifierLogDecoder             LogDecoder
 )
 
 func init() {
@@ -72,10 +71,6 @@ func init() {
 		panic(err)
 	}
 	OCR2AggregatorLogDecoder, err = newOCR2AggregatorLogDecoder()
-	if err != nil {
-		panic(err)
-	}
-	ChannelVerifierLogDecoder, err = newChannelVerifierLogDecoder()
 	if err != nil {
 		panic(err)
 	}
