@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.19;
 
-import {IVerifier} from "./interfaces/IVerifier.sol";
 import {ConfirmedOwner} from "../../shared/access/ConfirmedOwner.sol";
 import {TypeAndVersionInterface} from "../../interfaces/TypeAndVersionInterface.sol";
 import {IERC165} from "../../vendor/openzeppelin-solidity/v4.8.3/contracts/interfaces/IERC165.sol";
 import {IConfigurator} from "../interfaces/IConfigurator.sol";
-import {Common} from "../libraries/Common.sol";
 
 // OCR2 standard
 uint256 constant MAX_NUM_ORACLES = 31;
@@ -15,7 +13,7 @@ uint256 constant MAX_NUM_ORACLES = 31;
  * @title Configurator
  * @author samsondav
  * @notice This contract is intended to be deployed on the source chain and acts as a OCR3 configurator for LLO/Mercury
-**/
+ **/
 
 contract Configurator is IConfigurator, ConfirmedOwner, TypeAndVersionInterface, IERC165 {
   /// @notice This error is thrown whenever trying to set a config

@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.19;
 
-import {Common} from "../libraries/Common.sol";
-import {IERC165} from "../../vendor/openzeppelin-solidity/v4.8.3/contracts/interfaces/IERC165.sol";
-
 interface IConfigurator {
   /// @notice This event is emitted whenever a new configuration is set for a feed. It triggers a new run of the offchain reporting protocol.
   event ConfigSet(
