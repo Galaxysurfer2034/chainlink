@@ -115,6 +115,12 @@ func (it *EVMChainReaderInterfaceTester[T]) Setup(t T) {
 						ReadType:          types.Event,
 						EventDefinitions: &types.EventDefinitions{
 							GenericTopicNames: map[string]string{"field": "Field"},
+							GenericDataWordNames: map[string]types.DataWordDef{
+								"OracleID": {
+									OnChainName: "oracleId",
+									Index:       0,
+								},
+							},
 						},
 						OutputModifications: codec.ModifiersConfig{
 							&codec.RenameModifierConfig{Fields: map[string]string{"NestedStruct.Inner.IntVal": "I"}},
@@ -273,13 +279,13 @@ func (it *EVMChainReaderInterfaceTester[T]) TriggerEvent(t T, testStruct *TestSt
 		&it.contractTesters[it.address].ChainReaderTesterTransactor,
 		it.GetAuthWithGasSet(t),
 		*testStruct.Field,
-		MidToInternalType(testStruct.NestedStruct),
-		testStruct.DifferentField,
 		uint8(testStruct.OracleID),
 		OracleIdsToBytes(testStruct.OracleIDs),
 		common.Address(testStruct.Account),
 		ConvertAccounts(testStruct.Accounts),
+		testStruct.DifferentField,
 		testStruct.BigField,
+		MidToInternalType(testStruct.NestedStruct),
 	)
 	require.NoError(t, err)
 	it.Helper.Commit()

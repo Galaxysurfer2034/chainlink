@@ -133,8 +133,11 @@ func SourceReaderConfig() evmrelaytypes.ChainReaderConfig {
 						ChainSpecificName: mustGetEventName(consts.EventNameCCIPSendRequested, onrampABI),
 						ReadType:          evmrelaytypes.Event,
 						EventDefinitions: &evmrelaytypes.EventDefinitions{
-							GenericDataWordNames: map[string]uint8{
-								consts.EventAttributeSequenceNumber: 5,
+							GenericDataWordNames: map[string]evmrelaytypes.DataWordDef{
+								consts.EventAttributeSequenceNumber: {
+									OnChainName: consts.EventAttributeSequenceNumber,
+									Index:       5,
+								},
 							},
 						},
 					},
